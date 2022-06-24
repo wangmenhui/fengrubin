@@ -1,0 +1,150 @@
+---
+title: "diamonds"
+author: 'frb'
+date: "2022/6/5"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=TRUE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+# 配置环境
+options(na.action = na.warn)
+library(modelr)
+library(nycflights13)
+library(lubridate)
+library(readr)
+library(dplyr)
+library(ggplot2)
+
+```
+```{r}
+# 导入数据并查看数据基本情况
+data <- diamonds
+```
+
+
+```{r}
+head(data)
+str(data)
+names(data)
+```
+```{r}
+# 查看数据
+data %>% summarise(across(everything(), ~ sum(is.na(.))))
+data <- data %>%
+distinct()
+```
+
+```{r}
+#查看分布情况
+ggplot(diamonds, aes(cut, price)) + geom_boxplot()
+ggplot(diamonds, aes(color, price)) + geom_boxplot()
+ggplot(diamonds, aes(clarity, price)) + geom_boxplot()
+
+```
+
+```{r}
+#查看carat和price的关系
+ggplot(diamonds, aes(carat, price)) +
+  geom_hex(bins = 50)
+```
+
+```{r}
+#进行对数变换
+diamonds2 <- diamonds %>%
+  filter(carat <= 2.5) %>%
+  mutate(lprice = log2(price), lcarat = log2(carat))
+ggplot(diamonds2, aes(lcarat, lprice)) +
+  geom_hex(bins = 50)
+```
+```{r}
+# 进行显式转换
+mod_diamond <- lm(lprice ~ lcarat, data = diamonds2)
+grid <- diamonds2 %>%
+  data_grid(carat = seq_range(carat, 20)) %>%
+  mutate(lcarat = log2(carat)) %>%
+  add_predictions(mod_diamond, "lprice") %>%
+  mutate(price = 2 ^ lprice)
+```
+```{r}
+# 叠加曲线
+ggplot(diamonds2, aes(carat, price)) +
+  geom_hex(bins = 50) +
+  geom_line(data = grid, color = "red", size = 1)
+
+```
+
+```{r}
+
+# 检验残差lresid
+diamonds2 <- diamonds2 %>%
+  add_residuals(mod_diamond, "lresid")
+ggplot(diamonds2, aes(lcarat, lresid)) +
+  geom_hex(bins = 50)
+```
+```{r}
+# 残差绘图
+ggplot(diamonds2, aes(cut, lresid)) + geom_boxplot()
+ggplot(diamonds2, aes(color, lresid)) + geom_boxplot()
+ggplot(diamonds2, aes(clarity, lresid)) + geom_boxplot()
+
+```
+
+```{r}
+# 新模型 加入color cut clarity作为协变量
+mod_diamond2 <- lm(
+  lprice ~ lcarat + color + cut + clarity,
+  data = diamonds2
+)
+
+grid <- diamonds2 %>%
+  data_grid(cut, .model = mod_diamond2) %>%
+  add_predictions(mod_diamond2)
+grid
+
+ggplot(grid, aes(cut, pred)) +
+  geom_point()
+
+```
+
+```{r}
+# 检验残差 lresid2
+diamonds2 <- diamonds2 %>%
+  add_residuals(mod_diamond2, "lresid2")
+ggplot(diamonds2, aes(lcarat, lresid2)) +
+  geom_hex(bins = 50)
+
+```
+
+```{r}
+# 检查异常值
+diamonds2 %>%
+  filter(abs(lresid2) > 1) %>%
+  add_predictions(mod_diamond2) %>%
+  mutate(pred = round(2 ^ pred)) %>%
+  select(price, pred, carat:table, x:z) %>%
+  arrange(price)
+```
+
